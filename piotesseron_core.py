@@ -1,1 +1,4839 @@
+from __future__ import annotations
 
+import hashlib
+import json
+import math
+import re
+
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Union
+
+import numpy as np
+
+
+EPS = 1e-9
+
+
+# ================================================================
+# UTILITIES
+# ================================================================
+
+def clamp01(value: float) -> float:
+    return float(max(0.0, min(1.0, float(value))))
+
+
+def safe_mean(
+    values: Iterable[float],
+    default: float = 0.0,
+) -> float:
+    values = [float(value) for value in values]
+
+    if not values:
+        return float(default)
+
+    return float(sum(values) / len(values))
+
+
+def weighted_mean(
+    values: Sequence[float],
+    weights: Sequence[float],
+    default: float = 0.0,
+) -> float:
+    if not values:
+        return float(default)
+
+    value_array = np.asarray(
+        values,
+        dtype=np.float64,
+    )
+
+    weight_array = np.asarray(
+        weights,
+        dtype=np.float64,
+    )
+
+    total_weight = float(
+        weight_array.sum()
+    )
+
+    if total_weight <= EPS:
+        return float(
+            value_array.mean()
+        )
+
+    return float(
+        np.dot(
+            value_array,
+            weight_array,
+        )
+        / total_weight
+    )
+
+
+def sigmoid(value: float) -> float:
+    value = max(
+        -60.0,
+        min(
+            60.0,
+            float(value),
+        ),
+    )
+
+    return 1.0 / (
+        1.0
+        + math.exp(
+            -value
+        )
+    )
+
+
+def stable_hash(value: Any) -> int:
+    serialized = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    ).encode(
+        "utf-8"
+    )
+
+    digest = hashlib.sha256(
+        serialized
+    ).hexdigest()
+
+    return int(
+        digest,
+        16,
+    )
+
+
+# ================================================================
+# FUNDAMENTAL STATES
+# ================================================================
+
+class InternalState(
+    str,
+    Enum,
+):
+    ONE = "1"
+    ZERO = "0"
+    MAYBE = "MAYBE"
+    SILENCE = "SILENCE"
+
+    @property
+    def conceptual_label(
+        self,
+    ) -> str:
+        if self is InternalState.MAYBE:
+            return "Tal_Vez"
+
+        if self is InternalState.SILENCE:
+            return "Silencio"
+
+        return self.value
+
+
+class MasterClosure(
+    str,
+    Enum,
+):
+    ACTIVATE = "ACTIVATE"
+    SUSPEND = "SUSPEND"
+    CONTAIN = "CONTAIN"
+    DISCARD = "DISCARD"
+
+
+class BinaryPolicy(
+    str,
+    Enum,
+):
+    CONSERVATIVE = "conservative"
+    THRESHOLD = "threshold"
+    EXPLORATORY = "exploratory"
+
+
+# ================================================================
+# STRUCTURAL OBJECTS
+# ================================================================
+
+@dataclass
+class StructuralLine:
+    name: str
+    modality: str
+    content: Any
+
+    source: str = "internal"
+    weight: float = 1.0
+
+    coherence: float = 0.5
+    reliability: float = 0.5
+    completeness: float = 0.5
+    contradiction: float = 0.0
+    risk: float = 0.0
+    novelty: float = 0.5
+    actionability: float = 0.5
+    irreversibility: float = 0.0
+    noise: float = 0.2
+
+    pi_position: int = 0
+    pi_modulation: float = 0.0
+
+    def sanitize(
+        self,
+    ) -> "StructuralLine":
+
+        self.weight = max(
+            EPS,
+            float(
+                self.weight
+            ),
+        )
+
+        for attribute in (
+            "coherence",
+            "reliability",
+            "completeness",
+            "contradiction",
+            "risk",
+            "novelty",
+            "actionability",
+            "irreversibility",
+            "noise",
+        ):
+            setattr(
+                self,
+                attribute,
+                clamp01(
+                    getattr(
+                        self,
+                        attribute,
+                    )
+                ),
+            )
+
+        return self
+
+
+@dataclass
+class UEE:
+    identifier: str
+    content: Any
+
+    context: Dict[
+        str,
+        Any,
+    ] = field(
+        default_factory=dict
+    )
+
+    lines: List[
+        StructuralLine
+    ] = field(
+        default_factory=list
+    )
+
+    external: bool = False
+
+
+@dataclass
+class Reading:
+    name: str
+    score: float
+    confidence: float
+    rationale: str
+
+
+@dataclass
+class HypercubeTrace:
+    name: str
+    is_major: bool
+    subordinate_to: Optional[str]
+    activated: bool
+    input_lines: List[str]
+    output_score: float
+
+
+@dataclass
+class StructuralTask:
+    formed: bool
+    fit_for_action: bool
+    blocked: bool
+    suspended: bool
+    description: str
+
+
+@dataclass
+class Decision:
+    internal_state: InternalState
+    master_closure: MasterClosure
+
+    binary_output: int
+    binary_probability: float
+
+    task: StructuralTask
+
+    trajectory: Dict[
+        str,
+        Any,
+    ]
+
+    def to_dict(
+        self,
+    ) -> Dict[
+        str,
+        Any,
+    ]:
+
+        return {
+            "internal_state": (
+                self.internal_state.value
+            ),
+
+            "conceptual_label": (
+                self.internal_state
+                .conceptual_label
+            ),
+
+            "master_closure": (
+                self.master_closure.value
+            ),
+
+            "binary_output": int(
+                self.binary_output
+            ),
+
+            "binary_probability": float(
+                self.binary_probability
+            ),
+
+            "task": asdict(
+                self.task
+            ),
+
+            "trajectory": (
+                self.trajectory
+            ),
+        }
+
+
+# ================================================================
+# π STRUCTURAL SUBSTRATE
+# ================================================================
+
+class PiSubstrate:
+
+    PI_DIGITS = (
+        "14159265358979323846264338327950288419716939937510"
+        "58209749445923078164062862089986280348253421170679"
+        "82148086513282306647093844609550582231725359408128"
+        "48111745028410270193852110555964462294895493038196"
+        "44288109756659334461284756482337867831652712019091"
+        "45648566923460348610454326648213393607260249141273"
+        "72458700660631558817488152092096282925409171536436"
+        "78925903600113305305488204665213841469519415116094"
+    )
+
+    def __init__(
+        self,
+        anchor: int = 3,
+    ) -> None:
+
+        if anchor != 3:
+            raise ValueError(
+                "A3 is inviolable. "
+                "The primary anchor must remain 3."
+            )
+
+        self.A3 = 3
+
+    def place(
+        self,
+        line: StructuralLine,
+        uee_identifier: str,
+    ) -> StructuralLine:
+
+        hash_input = {
+            "uee": (
+                uee_identifier
+            ),
+
+            "line": (
+                line.name
+            ),
+
+            "modality": (
+                line.modality
+            ),
+
+            "content": (
+                line.content
+            ),
+        }
+
+        position = (
+            stable_hash(
+                hash_input
+            )
+            % len(
+                self.PI_DIGITS
+            )
+        )
+
+        digit = int(
+            self.PI_DIGITS[
+                position
+            ]
+        )
+
+        line.pi_position = (
+            position
+        )
+
+        line.pi_modulation = (
+            digit / 9.0
+            if digit > 0
+            else 0.0
+        )
+
+        return line
+
+
+# ================================================================
+# UEE BUILDER
+# ================================================================
+
+class UEEBuilder:
+
+    UNCERTAINTY_WORDS = {
+        "maybe",
+        "perhaps",
+        "possibly",
+        "uncertain",
+        "unknown",
+        "doubt",
+        "tal",
+        "vez",
+        "quizá",
+        "quizas",
+        "posible",
+        "incierto",
+        "incierta",
+        "duda",
+    }
+
+    ACTION_WORDS = {
+        "do",
+        "execute",
+        "send",
+        "submit",
+        "predict",
+        "decide",
+        "activate",
+        "hacer",
+        "ejecutar",
+        "enviar",
+        "predecir",
+        "decidir",
+        "activar",
+    }
+
+    RISK_WORDS = {
+        "danger",
+        "harm",
+        "illegal",
+        "unsafe",
+        "irreversible",
+        "critical",
+        "peligro",
+        "daño",
+        "ilegal",
+        "inseguro",
+        "crítico",
+        "critico",
+    }
+
+    CONTRADICTION_WORDS = {
+        "contradiction",
+        "false",
+        "incorrect",
+        "incoherent",
+        "impossible",
+        "contradicción",
+        "contradiccion",
+        "falso",
+        "incorrecto",
+        "incoherente",
+        "imposible",
+    }
+
+    def build(
+        self,
+        raw: Any,
+        identifier: Optional[
+            str
+        ] = None,
+        context: Optional[
+            Mapping[
+                str,
+                Any,
+            ]
+        ] = None,
+        external: bool = False,
+    ) -> UEE:
+
+        normalized_context = dict(
+            context
+            or {}
+        )
+
+        if identifier is None:
+            identifier = (
+                f"UEE-"
+                f"{stable_hash(raw) % 10**12:012d}"
+            )
+
+        uee = UEE(
+            identifier=identifier,
+            content=raw,
+            context=normalized_context,
+            lines=[],
+            external=external,
+        )
+
+        if isinstance(
+            raw,
+            Mapping,
+        ):
+
+            for name, value in (
+                raw.items()
+            ):
+
+                uee.lines.append(
+                    self._make_line(
+                        name=str(
+                            name
+                        ),
+
+                        value=value,
+
+                        context=(
+                            normalized_context
+                        ),
+
+                        external=(
+                            external
+                        ),
+                    )
+                )
+
+        elif isinstance(
+            raw,
+            (
+                list,
+                tuple,
+                np.ndarray,
+            ),
+        ):
+
+            uee.lines.append(
+                self._numeric_line(
+                    name="data",
+                    value=raw,
+                    context=(
+                        normalized_context
+                    ),
+                    external=external,
+                )
+            )
+
+        else:
+
+            uee.lines.append(
+                self._make_line(
+                    name="text",
+                    value=raw,
+                    context=(
+                        normalized_context
+                    ),
+                    external=external,
+                )
+            )
+
+        if not uee.lines:
+
+            uee.lines.append(
+                self._make_line(
+                    name="blank",
+                    value="",
+                    context=(
+                        normalized_context
+                    ),
+                    external=external,
+                )
+            )
+
+        return uee
+
+    def _signal_overrides(
+        self,
+        name: str,
+        context: Mapping[
+            str,
+            Any,
+        ],
+    ) -> Dict[
+        str,
+        float,
+    ]:
+
+        output: Dict[
+            str,
+            float,
+        ] = {}
+
+        signals = context.get(
+            "signals",
+            {},
+        )
+
+        if not isinstance(
+            signals,
+            Mapping,
+        ):
+            return output
+
+        for key in (
+            "*",
+            name,
+        ):
+
+            block = signals.get(
+                key,
+                {},
+            )
+
+            if not isinstance(
+                block,
+                Mapping,
+            ):
+                continue
+
+            for metric, value in (
+                block.items()
+            ):
+
+                if isinstance(
+                    value,
+                    (
+                        int,
+                        float,
+                        np.number,
+                    ),
+                ):
+
+                    output[
+                        metric
+                    ] = float(
+                        value
+                    )
+
+        return output
+
+    def _make_line(
+        self,
+        name: str,
+        value: Any,
+        context: Mapping[
+            str,
+            Any,
+        ],
+        external: bool,
+    ) -> StructuralLine:
+
+        if isinstance(
+            value,
+            (
+                list,
+                tuple,
+                np.ndarray,
+            ),
+        ):
+
+            return self._numeric_line(
+                name=name,
+                value=value,
+                context=context,
+                external=external,
+            )
+
+        if isinstance(
+            value,
+            Mapping,
+        ):
+
+            modality = str(
+                value.get(
+                    "modality",
+                    self._infer_modality(
+                        name,
+                        value,
+                    ),
+                )
+            )
+
+            content = value.get(
+                "content",
+                value,
+            )
+
+            metrics = self._heuristics(
+                content,
+                modality,
+            )
+
+            for metric in tuple(
+                metrics.keys()
+            ):
+
+                supplied_value = (
+                    value.get(
+                        metric
+                    )
+                )
+
+                if isinstance(
+                    supplied_value,
+                    (
+                        int,
+                        float,
+                        np.number,
+                    ),
+                ):
+
+                    metrics[
+                        metric
+                    ] = float(
+                        supplied_value
+                    )
+
+            weight = float(
+                value.get(
+                    "weight",
+                    1.0,
+                )
+            )
+
+        else:
+
+            modality = (
+                self._infer_modality(
+                    name,
+                    value,
+                )
+            )
+
+            content = value
+
+            metrics = (
+                self._heuristics(
+                    content,
+                    modality,
+                )
+            )
+
+            weight = 1.0
+
+        overrides = (
+            self._signal_overrides(
+                name,
+                context,
+            )
+        )
+
+        weight = float(
+            overrides.pop(
+                "weight",
+                weight,
+            )
+        )
+
+        metrics.update(
+            overrides
+        )
+
+        line = StructuralLine(
+            name=name,
+            modality=modality,
+            content=content,
+
+            source=(
+                "external"
+                if external
+                else "internal"
+            ),
+
+            weight=weight,
+
+            coherence=clamp01(
+                metrics.get(
+                    "coherence",
+                    0.5,
+                )
+            ),
+
+            reliability=clamp01(
+                metrics.get(
+                    "reliability",
+                    0.5,
+                )
+            ),
+
+            completeness=clamp01(
+                metrics.get(
+                    "completeness",
+                    0.5,
+                )
+            ),
+
+            contradiction=clamp01(
+                metrics.get(
+                    "contradiction",
+                    0.0,
+                )
+            ),
+
+            risk=clamp01(
+                metrics.get(
+                    "risk",
+                    0.0,
+                )
+            ),
+
+            novelty=clamp01(
+                metrics.get(
+                    "novelty",
+                    0.5,
+                )
+            ),
+
+            actionability=clamp01(
+                metrics.get(
+                    "actionability",
+                    0.5,
+                )
+            ),
+
+            irreversibility=clamp01(
+                metrics.get(
+                    "irreversibility",
+                    0.0,
+                )
+            ),
+
+            noise=clamp01(
+                metrics.get(
+                    "noise",
+                    0.2,
+                )
+            ),
+        )
+
+        return line.sanitize()
+
+    def _numeric_line(
+        self,
+        name: str,
+        value: Union[
+            Sequence[
+                Any
+            ],
+            np.ndarray,
+        ],
+        context: Mapping[
+            str,
+            Any,
+        ],
+        external: bool,
+    ) -> StructuralLine:
+
+        try:
+
+            array = np.asarray(
+                value,
+                dtype=np.float64,
+            ).reshape(
+                -1
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            array = np.asarray(
+                [],
+                dtype=np.float64,
+            )
+
+        finite = array[
+            np.isfinite(
+                array
+            )
+        ]
+
+        if finite.size == 0:
+
+            metrics = {
+                "coherence": 0.0,
+                "reliability": 0.0,
+                "completeness": 0.0,
+                "contradiction": 0.4,
+                "risk": 0.0,
+                "novelty": 0.0,
+                "actionability": 0.0,
+                "irreversibility": 0.0,
+                "noise": 1.0,
+            }
+
+        else:
+
+            completeness = (
+                finite.size
+                / max(
+                    1,
+                    array.size,
+                )
+            )
+
+            spread = float(
+                np.std(
+                    finite
+                )
+            )
+
+            scale = (
+                float(
+                    np.mean(
+                        np.abs(
+                            finite
+                        )
+                    )
+                )
+                + spread
+                + EPS
+            )
+
+            normalized_spread = (
+                clamp01(
+                    spread
+                    / scale
+                )
+            )
+
+            positive_fraction = float(
+                np.mean(
+                    finite
+                    > 0
+                )
+            )
+
+            negative_fraction = float(
+                np.mean(
+                    finite
+                    < 0
+                )
+            )
+
+            metrics = {
+                "coherence": (
+                    1.0
+                    - normalized_spread
+                ),
+
+                "reliability": (
+                    completeness
+                    * (
+                        1.0
+                        - 0.45
+                        * normalized_spread
+                    )
+                ),
+
+                "completeness": (
+                    completeness
+                ),
+
+                "contradiction": (
+                    clamp01(
+                        4.0
+                        * positive_fraction
+                        * negative_fraction
+                    )
+                ),
+
+                "risk": 0.0,
+
+                "novelty": (
+                    clamp01(
+                        math.tanh(
+                            spread
+                        )
+                    )
+                ),
+
+                "actionability": (
+                    clamp01(
+                        completeness
+                        * (
+                            1.0
+                            - normalized_spread
+                        )
+                    )
+                ),
+
+                "irreversibility": (
+                    0.0
+                ),
+
+                "noise": (
+                    normalized_spread
+                ),
+            }
+
+        overrides = (
+            self._signal_overrides(
+                name,
+                context,
+            )
+        )
+
+        weight = float(
+            overrides.pop(
+                "weight",
+                1.0,
+            )
+        )
+
+        metrics.update(
+            overrides
+        )
+
+        line = StructuralLine(
+            name=name,
+
+            modality=(
+                "quantitative"
+            ),
+
+            content=(
+                array.tolist()
+            ),
+
+            source=(
+                "external"
+                if external
+                else "internal"
+            ),
+
+            weight=weight,
+
+            coherence=clamp01(
+                metrics.get(
+                    "coherence",
+                    0.5,
+                )
+            ),
+
+            reliability=clamp01(
+                metrics.get(
+                    "reliability",
+                    0.5,
+                )
+            ),
+
+            completeness=clamp01(
+                metrics.get(
+                    "completeness",
+                    0.5,
+                )
+            ),
+
+            contradiction=clamp01(
+                metrics.get(
+                    "contradiction",
+                    0.0,
+                )
+            ),
+
+            risk=clamp01(
+                metrics.get(
+                    "risk",
+                    0.0,
+                )
+            ),
+
+            novelty=clamp01(
+                metrics.get(
+                    "novelty",
+                    0.5,
+                )
+            ),
+
+            actionability=clamp01(
+                metrics.get(
+                    "actionability",
+                    0.5,
+                )
+            ),
+
+            irreversibility=clamp01(
+                metrics.get(
+                    "irreversibility",
+                    0.0,
+                )
+            ),
+
+            noise=clamp01(
+                metrics.get(
+                    "noise",
+                    0.2,
+                )
+            ),
+        )
+
+        return line.sanitize()
+
+    def _infer_modality(
+        self,
+        name: str,
+        value: Any,
+    ) -> str:
+
+        normalized_name = (
+            name.lower()
+        )
+
+        if any(
+            token
+            in normalized_name
+            for token in (
+                "image",
+                "img",
+                "photo",
+                "visual",
+            )
+        ):
+            return "visual"
+
+        if any(
+            token
+            in normalized_name
+            for token in (
+                "audio",
+                "sound",
+                "voice",
+            )
+        ):
+            return "acoustic"
+
+        if any(
+            token
+            in normalized_name
+            for token in (
+                "video",
+                "frame",
+            )
+        ):
+            return "temporal-visual"
+
+        if any(
+            token
+            in normalized_name
+            for token in (
+                "document",
+                "pdf",
+                "file",
+            )
+        ):
+            return "documentary"
+
+        if any(
+            token
+            in normalized_name
+            for token in (
+                "metadata",
+                "context",
+            )
+        ):
+            return "contextual"
+
+        if isinstance(
+            value,
+            str,
+        ):
+            return "linguistic"
+
+        return "generic"
+
+    def _heuristics(
+        self,
+        content: Any,
+        modality: str,
+    ) -> Dict[
+        str,
+        float,
+    ]:
+
+        if content is None:
+
+            return {
+                "coherence": 0.0,
+                "reliability": 0.0,
+                "completeness": 0.0,
+                "contradiction": 0.2,
+                "risk": 0.0,
+                "novelty": 0.0,
+                "actionability": 0.0,
+                "irreversibility": 0.0,
+                "noise": 0.9,
+            }
+
+        text = str(
+            content
+        ).strip()
+
+        if not text:
+
+            return {
+                "coherence": 0.2,
+                "reliability": 0.15,
+                "completeness": 0.05,
+                "contradiction": 0.0,
+                "risk": 0.0,
+                "novelty": 0.0,
+                "actionability": 0.0,
+                "irreversibility": 0.0,
+                "noise": 0.8,
+            }
+
+        words = re.findall(
+            r"\b[\wáéíóúüñÁÉÍÓÚÜÑ'-]+\b",
+            text.lower(),
+        )
+
+        number_of_words = max(
+            1,
+            len(
+                words
+            ),
+        )
+
+        unique_ratio = (
+            len(
+                set(
+                    words
+                )
+            )
+            / number_of_words
+        )
+
+        punctuation_balance = 1.0
+
+        punctuation_balance -= min(
+            0.5,
+            abs(
+                text.count(
+                    "("
+                )
+                - text.count(
+                    ")"
+                )
+            )
+            * 0.15,
+        )
+
+        punctuation_balance -= min(
+            0.5,
+            abs(
+                text.count(
+                    "["
+                )
+                - text.count(
+                    "]"
+                )
+            )
+            * 0.15,
+        )
+
+        punctuation_balance = (
+            clamp01(
+                punctuation_balance
+            )
+        )
+
+        uncertainty_ratio = (
+            sum(
+                word
+                in self.UNCERTAINTY_WORDS
+                for word
+                in words
+            )
+            / number_of_words
+        )
+
+        action_ratio = (
+            sum(
+                word
+                in self.ACTION_WORDS
+                for word
+                in words
+            )
+            / number_of_words
+        )
+
+        risk_ratio = (
+            sum(
+                word
+                in self.RISK_WORDS
+                for word
+                in words
+            )
+            / number_of_words
+        )
+
+        contradiction_ratio = (
+            sum(
+                word
+                in self.CONTRADICTION_WORDS
+                for word
+                in words
+            )
+            / number_of_words
+        )
+
+        completeness = clamp01(
+            math.log1p(
+                number_of_words
+            )
+            / math.log(
+                80.0
+            )
+        )
+
+        coherence = clamp01(
+            0.40
+            + 0.35
+            * punctuation_balance
+            + 0.25
+            * min(
+                1.0,
+                number_of_words
+                / 25.0,
+            )
+        )
+
+        reliability = clamp01(
+            0.30
+            + 0.35
+            * completeness
+            + 0.20
+            * punctuation_balance
+        )
+
+        contradiction = clamp01(
+            contradiction_ratio
+            * 8.0
+        )
+
+        risk = clamp01(
+            risk_ratio
+            * 10.0
+        )
+
+        novelty = clamp01(
+            unique_ratio
+        )
+
+        actionability = clamp01(
+            0.20
+            + action_ratio
+            * 8.0
+            + 0.25
+            * completeness
+        )
+
+        irreversibility = clamp01(
+            risk
+            * 0.65
+        )
+
+        noise = clamp01(
+            0.45
+            * (
+                1.0
+                - coherence
+            )
+            + 0.55
+            * min(
+                1.0,
+                uncertainty_ratio
+                * 10.0,
+            )
+        )
+
+        if modality in {
+            "visual",
+            "acoustic",
+            "temporal-visual",
+        }:
+
+            reliability *= 0.85
+            completeness *= 0.85
+
+        return {
+            "coherence": (
+                coherence
+            ),
+
+            "reliability": (
+                reliability
+            ),
+
+            "completeness": (
+                completeness
+            ),
+
+            "contradiction": (
+                contradiction
+            ),
+
+            "risk": (
+                risk
+            ),
+
+            "novelty": (
+                novelty
+            ),
+
+            "actionability": (
+                actionability
+            ),
+
+            "irreversibility": (
+                irreversibility
+            ),
+
+            "noise": (
+                noise
+            ),
+        }
+
+
+# ================================================================
+# CONFIGURATION
+# ================================================================
+
+@dataclass
+class PiotesseronConfig:
+
+    activate_threshold: float = 0.66
+
+    discard_threshold: float = 0.34
+
+    action_threshold: float = 0.58
+
+    silence_risk_threshold: float = 0.76
+
+    silence_contradiction_threshold: float = 0.72
+
+    silence_limit_threshold: float = 0.74
+
+    maybe_binary_threshold: float = 0.56
+
+    binary_policy: BinaryPolicy = (
+        BinaryPolicy.THRESHOLD
+    )
+
+    keep_history: bool = True
+
+    territorial_scale: str = (
+        "100^3"
+    )
+
+
+# ================================================================
+# NUCLEAR ENTITIES
+# ================================================================
+
+class NuclearEntities:
+
+    @staticmethod
+    def mentea(
+        lines: Sequence[
+            StructuralLine
+        ],
+    ) -> Reading:
+
+        weights = [
+            line.weight
+            for line
+            in lines
+        ]
+
+        coherence = weighted_mean(
+            [
+                line.coherence
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        reliability = weighted_mean(
+            [
+                line.reliability
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        contradiction = weighted_mean(
+            [
+                line.contradiction
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        score = clamp01(
+            0.50
+            * coherence
+            + 0.30
+            * reliability
+            + 0.20
+            * (
+                1.0
+                - contradiction
+            )
+        )
+
+        confidence = clamp01(
+            0.60
+            * reliability
+            + 0.40
+            * coherence
+        )
+
+        return Reading(
+            name="Mentea",
+
+            score=score,
+
+            confidence=confidence,
+
+            rationale=(
+                "Logical consistency, coherence "
+                "and contradiction control."
+            ),
+        )
+
+    @staticmethod
+    def creaon(
+        lines: Sequence[
+            StructuralLine
+        ],
+    ) -> Reading:
+
+        weights = [
+            line.weight
+            for line
+            in lines
+        ]
+
+        novelty = weighted_mean(
+            [
+                line.novelty
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        coherence = weighted_mean(
+            [
+                line.coherence
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        noise = weighted_mean(
+            [
+                line.noise
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        score = clamp01(
+            0.65
+            * novelty
+            + 0.35
+            * coherence
+        )
+
+        confidence = clamp01(
+            0.50
+            * coherence
+            + 0.50
+            * (
+                1.0
+                - noise
+            )
+        )
+
+        return Reading(
+            name="Creaon",
+
+            score=score,
+
+            confidence=confidence,
+
+            rationale=(
+                "Controlled opening "
+                "of alternative configurations."
+            ),
+        )
+
+    @staticmethod
+    def amalthea(
+        lines: Sequence[
+            StructuralLine
+        ],
+    ) -> Reading:
+
+        local_scores = np.asarray(
+            [
+                0.35
+                * line.coherence
+                + 0.25
+                * line.reliability
+                + 0.20
+                * line.completeness
+                + 0.20
+                * (
+                    1.0
+                    - line.risk
+                )
+                for line
+                in lines
+            ],
+            dtype=np.float64,
+        )
+
+        local_mean = (
+            float(
+                local_scores.mean()
+            )
+            if local_scores.size
+            else 0.0
+        )
+
+        local_deviation = (
+            float(
+                local_scores.std()
+            )
+            if local_scores.size > 1
+            else 0.0
+        )
+
+        balance = clamp01(
+            1.0
+            - local_deviation
+        )
+
+        score = clamp01(
+            0.60
+            * local_mean
+            + 0.40
+            * balance
+        )
+
+        return Reading(
+            name="Amalthea",
+
+            score=score,
+
+            confidence=balance,
+
+            rationale=(
+                "Balance and integrability "
+                "across structural lines."
+            ),
+        )
+
+    @staticmethod
+    def sophiana(
+        lines: Sequence[
+            StructuralLine
+        ],
+    ) -> Reading:
+
+        weights = [
+            line.weight
+            for line
+            in lines
+        ]
+
+        risk = weighted_mean(
+            [
+                line.risk
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        irreversibility = weighted_mean(
+            [
+                line.irreversibility
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        contradiction = weighted_mean(
+            [
+                line.contradiction
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        noise = weighted_mean(
+            [
+                line.noise
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        limit_pressure = clamp01(
+            0.38
+            * risk
+            + 0.27
+            * irreversibility
+            + 0.22
+            * contradiction
+            + 0.13
+            * noise
+        )
+
+        confidence = clamp01(
+            0.50
+            + 0.50
+            * max(
+                risk,
+                irreversibility,
+                contradiction,
+            )
+        )
+
+        return Reading(
+            name="Sophiana",
+
+            score=limit_pressure,
+
+            confidence=confidence,
+
+            rationale=(
+                "Internal limit and protection "
+                "against false closure."
+            ),
+        )
+
+    @staticmethod
+    def daughter_of_sophiana(
+        lines: Sequence[
+            StructuralLine
+        ],
+        sophiana_reading: Reading,
+    ) -> Reading:
+
+        weights = [
+            line.weight
+            for line
+            in lines
+        ]
+
+        uncertainty = weighted_mean(
+            [
+                0.45
+                * (
+                    1.0
+                    - line.completeness
+                )
+                + 0.35
+                * line.noise
+                + 0.20
+                * (
+                    1.0
+                    - line.reliability
+                )
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        threshold_pressure = clamp01(
+            0.60
+            * uncertainty
+            + 0.40
+            * sophiana_reading.score
+        )
+
+        confidence = clamp01(
+            0.45
+            + 0.55
+            * abs(
+                uncertainty
+                - sophiana_reading.score
+            )
+        )
+
+        return Reading(
+            name=(
+                "DaughterOfSophiana"
+            ),
+
+            score=(
+                threshold_pressure
+            ),
+
+            confidence=confidence,
+
+            rationale=(
+                "Supervision of the threshold "
+                "between MAYBE and SILENCE."
+            ),
+        )
+
+
+# ================================================================
+# COUNCIL OF 12 INTERNAL SCIENTISTS
+# ================================================================
+
+class CouncilOfTwelve:
+
+    NAMES = (
+        "Euclid",
+        "Hypatia",
+        "Newton",
+        "Einstein",
+        "Turing",
+        "Shannon",
+        "Noether",
+        "Curie",
+        "Darwin",
+        "Godel",
+        "Tesla",
+        "Feynman",
+    )
+
+    RATIONALES = {
+        "Euclid": (
+            "Geometry, form, proportion "
+            "and spatial structure."
+        ),
+
+        "Hypatia": (
+            "Logical clarity "
+            "and ordered thought."
+        ),
+
+        "Newton": (
+            "Dynamics, cause, consequence "
+            "and movement."
+        ),
+
+        "Einstein": (
+            "Relativity, context, frame "
+            "of reference and time."
+        ),
+
+        "Turing": (
+            "Computation, procedure "
+            "and decidability."
+        ),
+
+        "Shannon": (
+            "Information, signal, noise "
+            "and transmission."
+        ),
+
+        "Noether": (
+            "Symmetry, conservation "
+            "and invariance."
+        ),
+
+        "Curie": (
+            "Matter, transformation "
+            "and empirical evidence."
+        ),
+
+        "Darwin": (
+            "Adaptation, change "
+            "and structural survival."
+        ),
+
+        "Godel": (
+            "Incompleteness and resistance "
+            "to absolute closure."
+        ),
+
+        "Tesla": (
+            "Energy, fields, resonance "
+            "and potential."
+        ),
+
+        "Feynman": (
+            "Interaction, explanation "
+            "and system behavior."
+        ),
+    }
+
+    def evaluate(
+        self,
+        lines: Sequence[
+            StructuralLine
+        ],
+    ) -> Dict[
+        str,
+        Reading,
+    ]:
+
+        weights = [
+            line.weight
+            for line
+            in lines
+        ]
+
+        coherence = weighted_mean(
+            [
+                line.coherence
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        reliability = weighted_mean(
+            [
+                line.reliability
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        completeness = weighted_mean(
+            [
+                line.completeness
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        contradiction = weighted_mean(
+            [
+                line.contradiction
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        risk = weighted_mean(
+            [
+                line.risk
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        novelty = weighted_mean(
+            [
+                line.novelty
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        actionability = weighted_mean(
+            [
+                line.actionability
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        noise = weighted_mean(
+            [
+                line.noise
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        irreversibility = weighted_mean(
+            [
+                line.irreversibility
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        local_scores = [
+            0.40
+            * line.coherence
+            + 0.30
+            * line.reliability
+            + 0.30
+            * line.completeness
+            for line
+            in lines
+        ]
+
+        invariance = clamp01(
+            1.0
+            - (
+                float(
+                    np.std(
+                        local_scores
+                    )
+                )
+                if len(
+                    local_scores
+                ) > 1
+                else 0.0
+            )
+        )
+
+        decidability = clamp01(
+            0.45
+            * completeness
+            + 0.35
+            * coherence
+            + 0.20
+            * (
+                1.0
+                - contradiction
+            )
+        )
+
+        signal_quality = clamp01(
+            0.55
+            * reliability
+            + 0.45
+            * (
+                1.0
+                - noise
+            )
+        )
+
+        scores = {
+            "Euclid": clamp01(
+                0.55
+                * invariance
+                + 0.45
+                * coherence
+            ),
+
+            "Hypatia": clamp01(
+                0.65
+                * coherence
+                + 0.35
+                * (
+                    1.0
+                    - contradiction
+                )
+            ),
+
+            "Newton": clamp01(
+                0.55
+                * actionability
+                + 0.45
+                * reliability
+            ),
+
+            "Einstein": clamp01(
+                0.45
+                * coherence
+                + 0.30
+                * completeness
+                + 0.25
+                * (
+                    1.0
+                    - irreversibility
+                )
+            ),
+
+            "Turing": (
+                decidability
+            ),
+
+            "Shannon": (
+                signal_quality
+            ),
+
+            "Noether": (
+                invariance
+            ),
+
+            "Curie": clamp01(
+                0.70
+                * reliability
+                + 0.30
+                * completeness
+            ),
+
+            "Darwin": clamp01(
+                0.55
+                * novelty
+                + 0.45
+                * (
+                    1.0
+                    - risk
+                )
+            ),
+
+            "Godel": clamp01(
+                1.0
+                - completeness
+                + 0.30
+                * noise
+            ),
+
+            "Tesla": clamp01(
+                0.55
+                * novelty
+                + 0.45
+                * actionability
+            ),
+
+            "Feynman": clamp01(
+                0.45
+                * coherence
+                + 0.30
+                * completeness
+                + 0.25
+                * reliability
+            ),
+        }
+
+        readings: Dict[
+            str,
+            Reading,
+        ] = {}
+
+        for scientist in (
+            self.NAMES
+        ):
+
+            if scientist == "Godel":
+
+                confidence = clamp01(
+                    0.50
+                    + 0.50
+                    * noise
+                )
+
+            else:
+
+                confidence = (
+                    signal_quality
+                )
+
+            readings[
+                scientist
+            ] = Reading(
+                name=scientist,
+
+                score=scores[
+                    scientist
+                ],
+
+                confidence=confidence,
+
+                rationale=(
+                    self.RATIONALES[
+                        scientist
+                    ]
+                ),
+            )
+
+        return readings
+
+
+# ================================================================
+# ALCYONE — ONLY ACTIVE MAJOR HYPERCUBE
+# ================================================================
+
+class Alcyone:
+
+    name = "Alcyone"
+
+    is_major = True
+
+    def __init__(
+        self,
+        config: Optional[
+            PiotesseronConfig
+        ] = None,
+    ) -> None:
+
+        self.config = (
+            config
+            or PiotesseronConfig()
+        )
+
+        self.pi = PiSubstrate(
+            anchor=3
+        )
+
+        self.council = (
+            CouncilOfTwelve()
+        )
+
+    def integrate(
+        self,
+        uee: UEE,
+    ) -> Decision:
+
+        for line in (
+            uee.lines
+        ):
+
+            self.pi.place(
+                line,
+                uee.identifier,
+            )
+
+        entity_readings: Dict[
+            str,
+            Reading,
+        ] = {}
+
+        entity_readings[
+            "Mentea"
+        ] = (
+            NuclearEntities
+            .mentea(
+                uee.lines
+            )
+        )
+
+        entity_readings[
+            "Creaon"
+        ] = (
+            NuclearEntities
+            .creaon(
+                uee.lines
+            )
+        )
+
+        entity_readings[
+            "Amalthea"
+        ] = (
+            NuclearEntities
+            .amalthea(
+                uee.lines
+            )
+        )
+
+        entity_readings[
+            "Sophiana"
+        ] = (
+            NuclearEntities
+            .sophiana(
+                uee.lines
+            )
+        )
+
+        entity_readings[
+            "DaughterOfSophiana"
+        ] = (
+            NuclearEntities
+            .daughter_of_sophiana(
+                uee.lines,
+
+                entity_readings[
+                    "Sophiana"
+                ],
+            )
+        )
+
+        council_readings = (
+            self.council
+            .evaluate(
+                uee.lines
+            )
+        )
+
+        hypercubes = (
+            self
+            ._activate_minor_hypercubes(
+                uee=uee,
+
+                entity_readings=(
+                    entity_readings
+                ),
+
+                council_readings=(
+                    council_readings
+                ),
+            )
+        )
+
+        metrics = (
+            self._cross(
+                lines=(
+                    uee.lines
+                ),
+
+                entity_readings=(
+                    entity_readings
+                ),
+
+                council_readings=(
+                    council_readings
+                ),
+            )
+        )
+
+        internal_state = (
+            self
+            ._determine_state(
+                metrics
+            )
+        )
+
+        task = (
+            self
+            ._form_task(
+                state=(
+                    internal_state
+                ),
+
+                metrics=(
+                    metrics
+                ),
+            )
+        )
+
+        master_closure = (
+            self
+            ._master_closure(
+                state=(
+                    internal_state
+                ),
+
+                task=task,
+            )
+        )
+
+        binary_probability = (
+            self
+            ._binary_probability(
+                metrics=(
+                    metrics
+                ),
+
+                state=(
+                    internal_state
+                ),
+            )
+        )
+
+        binary_output = (
+            self
+            ._project_binary(
+                state=(
+                    internal_state
+                ),
+
+                probability=(
+                    binary_probability
+                ),
+
+                metrics=(
+                    metrics
+                ),
+            )
+        )
+
+        metatasks = (
+            self
+            ._metatasks(
+                metrics=(
+                    metrics
+                ),
+
+                state=(
+                    internal_state
+                ),
+            )
+        )
+
+        trajectory = {
+            "uee_id": (
+                uee.identifier
+            ),
+
+            "external_input": bool(
+                uee.external
+            ),
+
+            "A3_primary_anchor": 3,
+
+            "territorial_scale": (
+                self.config
+                .territorial_scale
+            ),
+
+            "secondary_anchors": (
+                self
+                ._secondary_anchors(
+                    uee.lines
+                )
+            ),
+
+            "blank_space": (
+                self
+                ._blank_space(
+                    metrics
+                )
+            ),
+
+            "lines": [
+                {
+                    "name": (
+                        line.name
+                    ),
+
+                    "modality": (
+                        line.modality
+                    ),
+
+                    "source": (
+                        line.source
+                    ),
+
+                    "weight": (
+                        line.weight
+                    ),
+
+                    "pi_position": (
+                        line.pi_position
+                    ),
+
+                    "pi_modulation": (
+                        line.pi_modulation
+                    ),
+
+                    "signals": {
+                        "coherence": (
+                            line.coherence
+                        ),
+
+                        "reliability": (
+                            line.reliability
+                        ),
+
+                        "completeness": (
+                            line.completeness
+                        ),
+
+                        "contradiction": (
+                            line.contradiction
+                        ),
+
+                        "risk": (
+                            line.risk
+                        ),
+
+                        "novelty": (
+                            line.novelty
+                        ),
+
+                        "actionability": (
+                            line.actionability
+                        ),
+
+                        "irreversibility": (
+                            line.irreversibility
+                        ),
+
+                        "noise": (
+                            line.noise
+                        ),
+                    },
+                }
+
+                for line
+                in uee.lines
+            ],
+
+            "major_hypercube": {
+                "name": "Alcyone",
+
+                "active": True,
+
+                "unique": True,
+
+                "final_authority": True,
+            },
+
+            "minor_hypercubes": [
+                asdict(
+                    hypercube
+                )
+
+                for hypercube
+                in hypercubes
+            ],
+
+            "sophiana_position": {
+                "belongs_to_Alcyone": (
+                    True
+                ),
+
+                "owns_minor_hypercube": (
+                    False
+                ),
+
+                "function": (
+                    "Internal structural limit"
+                ),
+            },
+
+            "entity_readings": {
+                name: asdict(
+                    reading
+                )
+
+                for name, reading
+                in entity_readings.items()
+            },
+
+            "council_readings": {
+                name: asdict(
+                    reading
+                )
+
+                for name, reading
+                in council_readings.items()
+            },
+
+            "crossing_metrics": (
+                metrics
+            ),
+
+            "internal_state": (
+                internal_state.value
+            ),
+
+            "conceptual_label": (
+                internal_state
+                .conceptual_label
+            ),
+
+            "task": asdict(
+                task
+            ),
+
+            "master_closure": (
+                master_closure.value
+            ),
+
+            "binary_projection": (
+                binary_output
+            ),
+
+            "binary_probability": (
+                binary_probability
+            ),
+
+            "binary_projection_note": (
+                "External interface only; "
+                "internal state remains four-state."
+            ),
+
+            "metatasks": (
+                metatasks
+            ),
+
+            "reentry_allowed": (
+                internal_state
+                in {
+                    InternalState.MAYBE,
+                    InternalState.SILENCE,
+                }
+            ),
+        }
+
+        return Decision(
+            internal_state=(
+                internal_state
+            ),
+
+            master_closure=(
+                master_closure
+            ),
+
+            binary_output=(
+                binary_output
+            ),
+
+            binary_probability=(
+                binary_probability
+            ),
+
+            task=task,
+
+            trajectory=(
+                trajectory
+            ),
+        )
+
+    def _activate_minor_hypercubes(
+        self,
+        uee: UEE,
+        entity_readings: Mapping[
+            str,
+            Reading,
+        ],
+        council_readings: Mapping[
+            str,
+            Reading,
+        ],
+    ) -> List[
+        HypercubeTrace
+    ]:
+
+        line_names = [
+            line.name
+            for line
+            in uee.lines
+        ]
+
+        traces: List[
+            HypercubeTrace
+        ] = [
+            HypercubeTrace(
+                name="HC_Mentea",
+
+                is_major=False,
+
+                subordinate_to=(
+                    "Alcyone"
+                ),
+
+                activated=True,
+
+                input_lines=(
+                    line_names
+                ),
+
+                output_score=(
+                    entity_readings[
+                        "Mentea"
+                    ].score
+                ),
+            ),
+
+            HypercubeTrace(
+                name="HC_Creaon",
+
+                is_major=False,
+
+                subordinate_to=(
+                    "Alcyone"
+                ),
+
+                activated=True,
+
+                input_lines=(
+                    line_names
+                ),
+
+                output_score=(
+                    entity_readings[
+                        "Creaon"
+                    ].score
+                ),
+            ),
+
+            HypercubeTrace(
+                name="HC_Amalthea",
+
+                is_major=False,
+
+                subordinate_to=(
+                    "Alcyone"
+                ),
+
+                activated=True,
+
+                input_lines=(
+                    line_names
+                ),
+
+                output_score=(
+                    entity_readings[
+                        "Amalthea"
+                    ].score
+                ),
+            ),
+
+            HypercubeTrace(
+                name=(
+                    "HC_DaughterSophiana"
+                ),
+
+                is_major=False,
+
+                subordinate_to=(
+                    "Alcyone"
+                ),
+
+                activated=True,
+
+                input_lines=(
+                    line_names
+                ),
+
+                output_score=(
+                    entity_readings[
+                        "DaughterOfSophiana"
+                    ].score
+                ),
+            ),
+        ]
+
+        modalities = sorted(
+            set(
+                line.modality
+                for line
+                in uee.lines
+            )
+        )
+
+        for modality in (
+            modalities
+        ):
+
+            modal_lines = [
+                line
+                for line
+                in uee.lines
+                if line.modality
+                == modality
+            ]
+
+            modal_score = safe_mean(
+                (
+                    0.35
+                    * line.coherence
+                    + 0.25
+                    * line.reliability
+                    + 0.20
+                    * line.completeness
+                    + 0.20
+                    * (
+                        1.0
+                        - line.risk
+                    )
+                )
+
+                for line
+                in modal_lines
+            )
+
+            normalized_modality = (
+                modality
+                .upper()
+                .replace(
+                    "-",
+                    "_",
+                )
+                .replace(
+                    " ",
+                    "_",
+                )
+            )
+
+            traces.append(
+                HypercubeTrace(
+                    name=(
+                        f"HC_MODAL_"
+                        f"{normalized_modality}"
+                    ),
+
+                    is_major=False,
+
+                    subordinate_to=(
+                        "Alcyone"
+                    ),
+
+                    activated=True,
+
+                    input_lines=[
+                        line.name
+                        for line
+                        in modal_lines
+                    ],
+
+                    output_score=(
+                        clamp01(
+                            modal_score
+                        )
+                    ),
+                )
+            )
+
+        traces.append(
+            HypercubeTrace(
+                name=(
+                    "HC_COUNCIL_TRANSVERSAL"
+                ),
+
+                is_major=False,
+
+                subordinate_to=(
+                    "Alcyone"
+                ),
+
+                activated=True,
+
+                input_lines=list(
+                    council_readings.keys()
+                ),
+
+                output_score=(
+                    safe_mean(
+                        reading.score
+
+                        for reading
+                        in council_readings.values()
+                    )
+                ),
+            )
+        )
+
+        return traces
+
+    def _cross(
+        self,
+        lines: Sequence[
+            StructuralLine
+        ],
+        entity_readings: Mapping[
+            str,
+            Reading,
+        ],
+        council_readings: Mapping[
+            str,
+            Reading,
+        ],
+    ) -> Dict[
+        str,
+        float,
+    ]:
+
+        weights = [
+            line.weight
+            for line
+            in lines
+        ]
+
+        coherence = weighted_mean(
+            [
+                line.coherence
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        reliability = weighted_mean(
+            [
+                line.reliability
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        completeness = weighted_mean(
+            [
+                line.completeness
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        contradiction = weighted_mean(
+            [
+                line.contradiction
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        risk = weighted_mean(
+            [
+                line.risk
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        novelty = weighted_mean(
+            [
+                line.novelty
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        actionability = weighted_mean(
+            [
+                line.actionability
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        irreversibility = weighted_mean(
+            [
+                line.irreversibility
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        noise = weighted_mean(
+            [
+                line.noise
+                for line
+                in lines
+            ],
+            weights,
+        )
+
+        council_support = (
+            safe_mean(
+                reading.score
+
+                for name, reading
+                in council_readings.items()
+
+                if name
+                != "Godel"
+            )
+        )
+
+        incompleteness = (
+            council_readings[
+                "Godel"
+            ].score
+        )
+
+        positive_structure = clamp01(
+            0.24
+            * coherence
+            + 0.18
+            * reliability
+            + 0.14
+            * completeness
+            + 0.12
+            * entity_readings[
+                "Mentea"
+            ].score
+            + 0.10
+            * entity_readings[
+                "Amalthea"
+            ].score
+            + 0.08
+            * entity_readings[
+                "Creaon"
+            ].score
+            + 0.14
+            * council_support
+        )
+
+        limit_pressure = (
+            entity_readings[
+                "Sophiana"
+            ].score
+        )
+
+        uncertainty = clamp01(
+            0.32
+            * (
+                1.0
+                - completeness
+            )
+            + 0.25
+            * noise
+            + 0.18
+            * (
+                1.0
+                - reliability
+            )
+            + 0.15
+            * incompleteness
+            + 0.10
+            * entity_readings[
+                "DaughterOfSophiana"
+            ].score
+        )
+
+        support = clamp01(
+            positive_structure
+            - 0.28
+            * contradiction
+            - 0.22
+            * risk
+            - 0.12
+            * irreversibility
+            - 0.08
+            * noise
+        )
+
+        line_scores = [
+            0.35
+            * line.coherence
+            + 0.25
+            * line.reliability
+            + 0.20
+            * line.completeness
+            + 0.20
+            * (
+                1.0
+                - line.risk
+            )
+
+            for line
+            in lines
+        ]
+
+        line_deviation = (
+            float(
+                np.std(
+                    line_scores
+                )
+            )
+            if len(
+                line_scores
+            ) > 1
+            else 0.0
+        )
+
+        balance = clamp01(
+            1.0
+            - line_deviation
+        )
+
+        return {
+            "support": (
+                support
+            ),
+
+            "positive_structure": (
+                positive_structure
+            ),
+
+            "coherence": (
+                coherence
+            ),
+
+            "reliability": (
+                reliability
+            ),
+
+            "completeness": (
+                completeness
+            ),
+
+            "contradiction": (
+                contradiction
+            ),
+
+            "risk": (
+                risk
+            ),
+
+            "novelty": (
+                novelty
+            ),
+
+            "actionability": (
+                actionability
+            ),
+
+            "irreversibility": (
+                irreversibility
+            ),
+
+            "noise": (
+                noise
+            ),
+
+            "uncertainty": (
+                uncertainty
+            ),
+
+            "limit_pressure": (
+                limit_pressure
+            ),
+
+            "balance": (
+                balance
+            ),
+
+            "council_support": (
+                council_support
+            ),
+
+            "incompleteness": (
+                incompleteness
+            ),
+        }
+
+    def _determine_state(
+        self,
+        metrics: Mapping[
+            str,
+            float,
+        ],
+    ) -> InternalState:
+
+        config = (
+            self.config
+        )
+
+        strong_silence = (
+            metrics[
+                "risk"
+            ]
+            >= config
+            .silence_risk_threshold
+
+            or metrics[
+                "contradiction"
+            ]
+            >= config
+            .silence_contradiction_threshold
+
+            or metrics[
+                "limit_pressure"
+            ]
+            >= config
+            .silence_limit_threshold
+
+            or (
+                metrics[
+                    "irreversibility"
+                ]
+                >= 0.70
+
+                and metrics[
+                    "uncertainty"
+                ]
+                >= 0.55
+            )
+        )
+
+        if strong_silence:
+
+            return (
+                InternalState
+                .SILENCE
+            )
+
+        sufficient_activation = (
+            metrics[
+                "support"
+            ]
+            >= config
+            .activate_threshold
+
+            and metrics[
+                "coherence"
+            ]
+            >= 0.55
+
+            and metrics[
+                "reliability"
+            ]
+            >= 0.45
+
+            and metrics[
+                "risk"
+            ]
+            < 0.60
+        )
+
+        if sufficient_activation:
+
+            return (
+                InternalState
+                .ONE
+            )
+
+        structural_discard = (
+            metrics[
+                "support"
+            ]
+            <= config
+            .discard_threshold
+
+            and metrics[
+                "novelty"
+            ]
+            < 0.70
+
+            and metrics[
+                "risk"
+            ]
+            < config
+            .silence_risk_threshold
+
+            and metrics[
+                "contradiction"
+            ]
+            < config
+            .silence_contradiction_threshold
+        )
+
+        if structural_discard:
+
+            return (
+                InternalState
+                .ZERO
+            )
+
+        return (
+            InternalState
+            .MAYBE
+        )
+
+    def _form_task(
+        self,
+        state: InternalState,
+        metrics: Mapping[
+            str,
+            float,
+        ],
+    ) -> StructuralTask:
+
+        formed = (
+            state
+            in {
+                InternalState.ONE,
+                InternalState.MAYBE,
+            }
+        )
+
+        blocked = (
+            state
+            == InternalState.SILENCE
+        )
+
+        fit_for_action = (
+            state
+            == InternalState.ONE
+
+            and metrics[
+                "actionability"
+            ]
+            >= self.config
+            .action_threshold
+
+            and metrics[
+                "risk"
+            ]
+            < 0.60
+
+            and metrics[
+                "limit_pressure"
+            ]
+            < self.config
+            .silence_limit_threshold
+        )
+
+        suspended = (
+            state
+            == InternalState.MAYBE
+
+            or (
+                state
+                == InternalState.ONE
+
+                and not
+                fit_for_action
+            )
+        )
+
+        if blocked:
+
+            description = (
+                "Task blocked to protect "
+                "structural coherence."
+            )
+
+        elif fit_for_action:
+
+            description = (
+                "Task formed and structurally "
+                "fit for action."
+            )
+
+        elif suspended:
+
+            description = (
+                "Task retained without execution "
+                "pending sufficient legitimacy."
+            )
+
+        else:
+
+            description = (
+                "No structural task formed."
+            )
+
+        return StructuralTask(
+            formed=formed,
+
+            fit_for_action=(
+                fit_for_action
+            ),
+
+            blocked=blocked,
+
+            suspended=suspended,
+
+            description=(
+                description
+            ),
+        )
+
+    @staticmethod
+    def _master_closure(
+        state: InternalState,
+        task: StructuralTask,
+    ) -> MasterClosure:
+
+        if state == (
+            InternalState
+            .SILENCE
+        ):
+
+            return (
+                MasterClosure
+                .CONTAIN
+            )
+
+        if state == (
+            InternalState
+            .ZERO
+        ):
+
+            return (
+                MasterClosure
+                .DISCARD
+            )
+
+        if state == (
+            InternalState
+            .MAYBE
+        ):
+
+            return (
+                MasterClosure
+                .SUSPEND
+            )
+
+        if task.fit_for_action:
+
+            return (
+                MasterClosure
+                .ACTIVATE
+            )
+
+        return (
+            MasterClosure
+            .SUSPEND
+        )
+
+    def _binary_probability(
+        self,
+        metrics: Mapping[
+            str,
+            float,
+        ],
+        state: InternalState,
+    ) -> float:
+
+        raw_score = (
+            4.0
+            * (
+                metrics[
+                    "support"
+                ]
+                - 0.50
+            )
+
+            + 1.20
+            * (
+                metrics[
+                    "actionability"
+                ]
+                - 0.50
+            )
+
+            + 0.70
+            * (
+                metrics[
+                    "balance"
+                ]
+                - 0.50
+            )
+
+            - 1.80
+            * metrics[
+                "risk"
+            ]
+
+            - 1.40
+            * metrics[
+                "contradiction"
+            ]
+
+            - 0.80
+            * metrics[
+                "limit_pressure"
+            ]
+        )
+
+        probability = sigmoid(
+            raw_score
+        )
+
+        if state == (
+            InternalState
+            .ONE
+        ):
+
+            probability = max(
+                probability,
+                0.500001,
+            )
+
+        elif state in {
+            InternalState.ZERO,
+            InternalState.SILENCE,
+        }:
+
+            probability = min(
+                probability,
+                0.499999,
+            )
+
+        return clamp01(
+            probability
+        )
+
+    def _project_binary(
+        self,
+        state: InternalState,
+        probability: float,
+        metrics: Mapping[
+            str,
+            float,
+        ],
+    ) -> int:
+
+        if state == (
+            InternalState
+            .ONE
+        ):
+
+            return 1
+
+        if state in {
+            InternalState.ZERO,
+            InternalState.SILENCE,
+        }:
+
+            return 0
+
+        policy = (
+            self.config
+            .binary_policy
+        )
+
+        if policy == (
+            BinaryPolicy
+            .CONSERVATIVE
+        ):
+
+            return 0
+
+        if policy == (
+            BinaryPolicy
+            .EXPLORATORY
+        ):
+
+            fertile_maybe = (
+                metrics[
+                    "novelty"
+                ]
+                >= 0.55
+
+                and metrics[
+                    "risk"
+                ]
+                < 0.45
+
+                and metrics[
+                    "contradiction"
+                ]
+                < 0.45
+            )
+
+            threshold_passed = (
+                probability
+                >= self.config
+                .maybe_binary_threshold
+            )
+
+            return int(
+                fertile_maybe
+                or threshold_passed
+            )
+
+        return int(
+            probability
+            >= self.config
+            .maybe_binary_threshold
+        )
+
+    @staticmethod
+    def _secondary_anchors(
+        lines: Sequence[
+            StructuralLine
+        ],
+    ) -> List[
+        str
+    ]:
+
+        anchors: List[
+            str
+        ] = []
+
+        for line in (
+            lines
+        ):
+
+            if line.reliability >= 0.70:
+
+                anchors.append(
+                    f"REL_"
+                    f"{line.name}"
+                )
+
+            if line.coherence >= 0.75:
+
+                anchors.append(
+                    f"COH_"
+                    f"{line.name}"
+                )
+
+            if line.completeness >= 0.75:
+
+                anchors.append(
+                    f"COM_"
+                    f"{line.name}"
+                )
+
+        if not anchors:
+
+            anchors.append(
+                "A3_ONLY"
+            )
+
+        return anchors
+
+    @staticmethod
+    def _blank_space(
+        metrics: Mapping[
+            str,
+            float,
+        ],
+    ) -> Dict[
+        str,
+        Any,
+    ]:
+
+        pressure = clamp01(
+            0.35
+            * metrics[
+                "uncertainty"
+            ]
+            + 0.25
+            * metrics[
+                "noise"
+            ]
+            + 0.20
+            * metrics[
+                "contradiction"
+            ]
+            + 0.20
+            * metrics[
+                "limit_pressure"
+            ]
+        )
+
+        return {
+            "active": (
+                pressure
+                >= 0.40
+            ),
+
+            "pressure": (
+                pressure
+            ),
+
+            "function": (
+                "pause / saturation buffer / "
+                "reorganization / non-closure"
+            ),
+        }
+
+    @staticmethod
+    def _metatasks(
+        metrics: Mapping[
+            str,
+            float,
+        ],
+        state: InternalState,
+    ) -> List[
+        str
+    ]:
+
+        metatasks: List[
+            str
+        ] = []
+
+        structural_load = (
+            safe_mean(
+                [
+                    metrics[
+                        "uncertainty"
+                    ],
+
+                    metrics[
+                        "noise"
+                    ],
+
+                    metrics[
+                        "contradiction"
+                    ],
+
+                    metrics[
+                        "risk"
+                    ],
+
+                    metrics[
+                        "limit_pressure"
+                    ],
+                ]
+            )
+        )
+
+        if structural_load >= 0.65:
+
+            metatasks.append(
+                "REDUCE_STRUCTURAL_LOAD"
+            )
+
+        if metrics[
+            "uncertainty"
+        ] >= 0.60:
+
+            metatasks.append(
+                "REQUEST_OR_REENTER_WITH_MORE_STRUCTURE"
+            )
+
+        if metrics[
+            "noise"
+        ] >= 0.55:
+
+            metatasks.append(
+                "FILTER_MULTIMODAL_NOISE"
+            )
+
+        if metrics[
+            "contradiction"
+        ] >= 0.50:
+
+            metatasks.append(
+                "RESOLVE_LINE_CONFLICT"
+            )
+
+        if state == (
+            InternalState
+            .SILENCE
+        ):
+
+            metatasks.extend(
+                [
+                    "CONTAIN",
+                    "PROTECT_CORE",
+                ]
+            )
+
+        elif state == (
+            InternalState
+            .MAYBE
+        ):
+
+            metatasks.append(
+                "SUSPEND_WITHOUT_PETRIFICATION"
+            )
+
+        elif state == (
+            InternalState
+            .ONE
+        ):
+
+            metatasks.append(
+                "MONITOR_ACTION_THRESHOLD"
+            )
+
+        else:
+
+            metatasks.append(
+                "DISCARD_WITH_TRACE"
+            )
+
+        return list(
+            dict.fromkeys(
+                metatasks
+            )
+        )
+
+
+# ================================================================
+# PIOTESSERON GOVERNOR
+# ================================================================
+
+class Piotesseron:
+
+    def __init__(
+        self,
+        config: Optional[
+            PiotesseronConfig
+        ] = None,
+    ) -> None:
+
+        self.config = (
+            config
+            or PiotesseronConfig()
+        )
+
+        self.builder = (
+            UEEBuilder()
+        )
+
+        self.alcyone = (
+            Alcyone(
+                self.config
+            )
+        )
+
+        self.history: List[
+            Dict[
+                str,
+                Any,
+            ]
+        ] = []
+
+        self._assert_invariants()
+
+    def _assert_invariants(
+        self,
+    ) -> None:
+
+        if self.alcyone.name != "Alcyone":
+
+            raise RuntimeError(
+                "Invariant violation: "
+                "Alcyone identity changed."
+            )
+
+        if not (
+            self.alcyone
+            .is_major
+        ):
+
+            raise RuntimeError(
+                "Invariant violation: "
+                "Alcyone must remain the active Major Hypercube."
+            )
+
+        if (
+            self.alcyone
+            .pi
+            .A3
+            != 3
+        ):
+
+            raise RuntimeError(
+                "Invariant violation: "
+                "A3 must remain 3."
+            )
+
+    def evaluate(
+        self,
+        raw: Any,
+        identifier: Optional[
+            str
+        ] = None,
+        context: Optional[
+            Mapping[
+                str,
+                Any,
+            ]
+        ] = None,
+        external: bool = False,
+    ) -> Decision:
+
+        uee = (
+            self.builder
+            .build(
+                raw=raw,
+
+                identifier=(
+                    identifier
+                ),
+
+                context=context,
+
+                external=(
+                    external
+                ),
+            )
+        )
+
+        decision = (
+            self.alcyone
+            .integrate(
+                uee
+            )
+        )
+
+        if (
+            self.config
+            .keep_history
+        ):
+
+            self.history.append(
+                decision.to_dict()
+            )
+
+        return decision
+
+    def reenter(
+        self,
+        previous_decision: Decision,
+        new_evidence: Any,
+        context: Optional[
+            Mapping[
+                str,
+                Any,
+            ]
+        ] = None,
+    ) -> Decision:
+
+        previous_trajectory = (
+            previous_decision
+            .trajectory
+        )
+
+        raw = {
+            "previous_trajectory": {
+                "content": (
+                    previous_trajectory
+                ),
+
+                "modality": (
+                    "contextual"
+                ),
+
+                "weight": 0.65,
+
+                "reliability": 0.75,
+
+                "completeness": 0.75,
+
+                "coherence": 0.75,
+
+                "noise": 0.15,
+            },
+
+            "new_evidence": (
+                new_evidence
+            ),
+        }
+
+        identifier = (
+            f"{previous_trajectory['uee_id']}"
+            f"-REENTRY-"
+            f"{len(self.history) + 1}"
+        )
+
+        return self.evaluate(
+            raw=raw,
+
+            identifier=(
+                identifier
+            ),
+
+            context=context,
+
+            external=True,
+        )
+
+    def evaluate_batch(
+        self,
+        samples: Sequence[
+            Any
+        ],
+        contexts: Optional[
+            Sequence[
+                Optional[
+                    Mapping[
+                        str,
+                        Any,
+                    ]
+                ]
+            ]
+        ] = None,
+    ) -> List[
+        Decision
+    ]:
+
+        if contexts is None:
+
+            contexts = [
+                None
+            ] * len(
+                samples
+            )
+
+        if len(
+            contexts
+        ) != len(
+            samples
+        ):
+
+            raise ValueError(
+                "contexts and samples "
+                "must have the same length."
+            )
+
+        decisions: List[
+            Decision
+        ] = []
+
+        for index, (
+            sample,
+            context,
+        ) in enumerate(
+            zip(
+                samples,
+                contexts,
+            )
+        ):
+
+            decision = (
+                self.evaluate(
+                    raw=sample,
+
+                    identifier=(
+                        f"BATCH-"
+                        f"{index:08d}"
+                    ),
+
+                    context=context,
+
+                    external=True,
+                )
+            )
+
+            decisions.append(
+                decision
+            )
+
+        return decisions
+
+    def internal_states(
+        self,
+        samples: Sequence[
+            Any
+        ],
+        contexts: Optional[
+            Sequence[
+                Optional[
+                    Mapping[
+                        str,
+                        Any,
+                    ]
+                ]
+            ]
+        ] = None,
+    ) -> List[
+        str
+    ]:
+
+        decisions = (
+            self.evaluate_batch(
+                samples=(
+                    samples
+                ),
+
+                contexts=(
+                    contexts
+                ),
+            )
+        )
+
+        return [
+            decision
+            .internal_state
+            .value
+
+            for decision
+            in decisions
+        ]
+
+    def conceptual_states(
+        self,
+        samples: Sequence[
+            Any
+        ],
+        contexts: Optional[
+            Sequence[
+                Optional[
+                    Mapping[
+                        str,
+                        Any,
+                    ]
+                ]
+            ]
+        ] = None,
+    ) -> List[
+        str
+    ]:
+
+        decisions = (
+            self.evaluate_batch(
+                samples=(
+                    samples
+                ),
+
+                contexts=(
+                    contexts
+                ),
+            )
+        )
+
+        return [
+            decision
+            .internal_state
+            .conceptual_label
+
+            for decision
+            in decisions
+        ]
+
+    def predict(
+        self,
+        samples: Sequence[
+            Any
+        ],
+        contexts: Optional[
+            Sequence[
+                Optional[
+                    Mapping[
+                        str,
+                        Any,
+                    ]
+                ]
+            ]
+        ] = None,
+    ) -> np.ndarray:
+
+        decisions = (
+            self.evaluate_batch(
+                samples=(
+                    samples
+                ),
+
+                contexts=(
+                    contexts
+                ),
+            )
+        )
+
+        return np.asarray(
+            [
+                decision
+                .binary_output
+
+                for decision
+                in decisions
+            ],
+
+            dtype=np.int64,
+        )
+
+    def predict_proba(
+        self,
+        samples: Sequence[
+            Any
+        ],
+        contexts: Optional[
+            Sequence[
+                Optional[
+                    Mapping[
+                        str,
+                        Any,
+                    ]
+                ]
+            ]
+        ] = None,
+    ) -> np.ndarray:
+
+        decisions = (
+            self.evaluate_batch(
+                samples=(
+                    samples
+                ),
+
+                contexts=(
+                    contexts
+                ),
+            )
+        )
+
+        probability_one = np.asarray(
+            [
+                decision
+                .binary_probability
+
+                for decision
+                in decisions
+            ],
+
+            dtype=np.float64,
+        )
+
+        probability_zero = (
+            1.0
+            - probability_one
+        )
+
+        return np.column_stack(
+            [
+                probability_zero,
+                probability_one,
+            ]
+        )
+
+    def save_history(
+        self,
+        path: str = (
+            "piotesseron_trajectory.json"
+        ),
+    ) -> str:
+
+        with open(
+            path,
+            "w",
+            encoding="utf-8",
+        ) as file:
+
+            json.dump(
+                self.history,
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        return path
+
+    def clear_history(
+        self,
+    ) -> None:
+
+        self.history.clear()
+
+
+# ================================================================
+# EXTERNAL MODEL ADAPTER
+# ================================================================
+
+class PiotesseronMLAdapter:
+
+    def __init__(
+        self,
+        core: Piotesseron,
+        model: Any,
+    ) -> None:
+
+        self.core = core
+
+        self.model = model
+
+    def _model_signal(
+        self,
+        features: Any,
+    ) -> Dict[
+        str,
+        Any,
+    ]:
+
+        if hasattr(
+            self.model,
+            "predict_proba",
+        ):
+
+            probabilities = np.asarray(
+                self.model
+                .predict_proba(
+                    features
+                ),
+
+                dtype=np.float64,
+            )
+
+            if (
+                probabilities.ndim
+                == 2
+
+                and probabilities.shape[
+                    1
+                ] >= 2
+            ):
+
+                probability = clamp01(
+                    float(
+                        probabilities[
+                            0,
+                            1,
+                        ]
+                    )
+                )
+
+            else:
+
+                probability = clamp01(
+                    float(
+                        probabilities
+                        .reshape(
+                            -1
+                        )[0]
+                    )
+                )
+
+            confidence = clamp01(
+                abs(
+                    probability
+                    - 0.5
+                )
+                * 2.0
+            )
+
+            uncertainty = clamp01(
+                1.0
+                - confidence
+            )
+
+            return {
+                "kind": (
+                    "probabilistic_model"
+                ),
+
+                "probability_class_1": (
+                    probability
+                ),
+
+                "confidence": (
+                    confidence
+                ),
+
+                "uncertainty": (
+                    uncertainty
+                ),
+            }
+
+        prediction = np.asarray(
+            self.model
+            .predict(
+                features
+            )
+        ).reshape(
+            -1
+        )
+
+        return {
+            "kind": (
+                "model_prediction"
+            ),
+
+            "prediction": float(
+                prediction[
+                    0
+                ]
+            ),
+
+            "confidence": (
+                0.5
+            ),
+
+            "uncertainty": (
+                0.5
+            ),
+        }
+
+    def evaluate(
+        self,
+        features: Any,
+        raw_context: Any = None,
+        identifier: Optional[
+            str
+        ] = None,
+    ) -> Decision:
+
+        signal = (
+            self._model_signal(
+                features
+            )
+        )
+
+        confidence = clamp01(
+            signal.get(
+                "confidence",
+                0.5,
+            )
+        )
+
+        uncertainty = clamp01(
+            signal.get(
+                "uncertainty",
+                0.5,
+            )
+        )
+
+        external_signal = {
+            "model_signal": {
+                "content": {
+                    "signal": (
+                        signal
+                    ),
+
+                    "raw_context": (
+                        raw_context
+                    ),
+                },
+
+                "modality": (
+                    "external-model"
+                ),
+
+                "weight": 1.2,
+
+                "coherence": (
+                    confidence
+                ),
+
+                "reliability": (
+                    0.50
+                    + 0.50
+                    * confidence
+                ),
+
+                "completeness": (
+                    1.0
+                ),
+
+                "contradiction": (
+                    uncertainty
+                    * 0.20
+                ),
+
+                "risk": (
+                    0.0
+                ),
+
+                "novelty": (
+                    uncertainty
+                ),
+
+                "actionability": (
+                    confidence
+                ),
+
+                "irreversibility": (
+                    0.0
+                ),
+
+                "noise": (
+                    uncertainty
+                ),
+            }
+        }
+
+        decision = (
+            self.core
+            .evaluate(
+                raw=(
+                    external_signal
+                ),
+
+                identifier=(
+                    identifier
+                ),
+
+                external=True,
+            )
+        )
+
+        decision.trajectory[
+            "external_model_signal"
+        ] = signal
+
+        return decision
+
+
+# ================================================================
+# STRUCTURAL SELF-CHECK
+# ================================================================
+
+def structural_self_check() -> Dict[
+    str,
+    bool,
+]:
+
+    core = (
+        Piotesseron()
+    )
+
+    sample = {
+        "signal": {
+            "content": (
+                "Coherent controlled evidence."
+            ),
+
+            "coherence": (
+                0.90
+            ),
+
+            "reliability": (
+                0.90
+            ),
+
+            "completeness": (
+                0.90
+            ),
+
+            "contradiction": (
+                0.05
+            ),
+
+            "risk": (
+                0.05
+            ),
+
+            "novelty": (
+                0.50
+            ),
+
+            "actionability": (
+                0.80
+            ),
+
+            "irreversibility": (
+                0.05
+            ),
+
+            "noise": (
+                0.05
+            ),
+        }
+    }
+
+    decision = (
+        core.evaluate(
+            sample,
+
+            identifier=(
+                "SELF-CHECK"
+            ),
+        )
+    )
+
+    minor_names = {
+        hypercube[
+            "name"
+        ]
+
+        for hypercube
+        in decision
+        .trajectory[
+            "minor_hypercubes"
+        ]
+    }
+
+    return {
+        "A3_is_3": (
+            core
+            .alcyone
+            .pi
+            .A3
+            == 3
+        ),
+
+        "Alcyone_is_major": (
+            core
+            .alcyone
+            .is_major
+            is True
+        ),
+
+        "Alcyone_is_unique_major": (
+            decision
+            .trajectory[
+                "major_hypercube"
+            ][
+                "unique"
+            ]
+            is True
+        ),
+
+        "Sophiana_belongs_to_Alcyone": (
+            decision
+            .trajectory[
+                "sophiana_position"
+            ][
+                "belongs_to_Alcyone"
+            ]
+            is True
+        ),
+
+        "Sophiana_has_no_minor_hypercube": (
+            "HC_Sophiana"
+            not in minor_names
+        ),
+
+        "MAYBE_exists": (
+            InternalState
+            .MAYBE
+            .value
+            == "MAYBE"
+        ),
+
+        "SILENCE_exists": (
+            InternalState
+            .SILENCE
+            .value
+            == "SILENCE"
+        ),
+
+        "binary_projection_is_external": (
+            decision
+            .trajectory[
+                "binary_projection_note"
+            ]
+            .startswith(
+                "External interface only"
+            )
+        ),
+    }
+
+
+# ================================================================
+# DIRECT EXECUTION
+# ================================================================
+
+if __name__ == "__main__":
+
+    config = PiotesseronConfig(
+        activate_threshold=0.66,
+
+        discard_threshold=0.34,
+
+        action_threshold=0.58,
+
+        silence_risk_threshold=0.76,
+
+        silence_contradiction_threshold=0.72,
+
+        silence_limit_threshold=0.74,
+
+        maybe_binary_threshold=0.56,
+
+        binary_policy=(
+            BinaryPolicy.THRESHOLD
+        ),
+
+        keep_history=True,
+
+        territorial_scale=(
+            "100^3"
+        ),
+    )
+
+    core = Piotesseron(
+        config=config
+    )
+
+    sample = {
+        "text": {
+            "content": (
+                "The evidence is coherent and "
+                "supports a controlled decision."
+            ),
+
+            "modality": (
+                "linguistic"
+            ),
+
+            "weight": (
+                1.0
+            ),
+
+            "coherence": (
+                0.88
+            ),
+
+            "reliability": (
+                0.82
+            ),
+
+            "completeness": (
+                0.80
+            ),
+
+            "contradiction": (
+                0.08
+            ),
+
+            "risk": (
+                0.12
+            ),
+
+            "novelty": (
+                0.55
+            ),
+
+            "actionability": (
+                0.78
+            ),
+
+            "irreversibility": (
+                0.10
+            ),
+
+            "noise": (
+                0.10
+            ),
+        },
+
+        "data": {
+            "content": [
+                0.80,
+                0.83,
+                0.79,
+                0.85,
+            ],
+
+            "modality": (
+                "quantitative"
+            ),
+
+            "weight": (
+                1.2
+            ),
+
+            "coherence": (
+                0.90
+            ),
+
+            "reliability": (
+                0.88
+            ),
+
+            "completeness": (
+                1.00
+            ),
+
+            "contradiction": (
+                0.03
+            ),
+
+            "risk": (
+                0.08
+            ),
+
+            "novelty": (
+                0.45
+            ),
+
+            "actionability": (
+                0.80
+            ),
+
+            "irreversibility": (
+                0.08
+            ),
+
+            "noise": (
+                0.06
+            ),
+        },
+    }
+
+    decision = core.evaluate(
+        raw=sample,
+
+        identifier=(
+            "PIOTESSERON-DEMO"
+        ),
+    )
+
+    print(
+        "=" * 72
+    )
+
+    print(
+        "PIOTESSERON — RESULT"
+    )
+
+    print(
+        "=" * 72
+    )
+
+    print(
+        "Internal state :",
+        decision
+        .internal_state
+        .value,
+    )
+
+    print(
+        "Conceptual     :",
+        decision
+        .internal_state
+        .conceptual_label,
+    )
+
+    print(
+        "Master closure :",
+        decision
+        .master_closure
+        .value,
+    )
+
+    print(
+        "Binary output  :",
+        decision
+        .binary_output,
+    )
+
+    print(
+        "P(binary=1)    :",
+        round(
+            decision
+            .binary_probability,
+            6,
+        ),
+    )
+
+    print(
+        "Task           :",
+        decision
+        .task
+        .description,
+    )
+
+    print(
+        "=" * 72
+    )
+
+    print(
+        json.dumps(
+            decision.to_dict(),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+    print(
+        "\nSTRUCTURAL SELF-CHECK"
+    )
+
+    print(
+        "-" * 72
+    )
+
+    for name, ok in (
+        structural_self_check()
+        .items()
+    ):
+
+        print(
+            f"{name:40s}",
+            (
+                "OK"
+                if ok
+                else "FAIL"
+            ),
+)
