@@ -1,126 +1,265 @@
-PIOTESSERON
+# PIOTESSERON
 
-Consolidated Master Core
+## Consolidated Master Core
 
-A Criterion-Based Cognitive Architecture
+### A Criterion-Based Cognitive Architecture
 
-Conceptual author: Adrián Eduardo Pineda Moreno
-Development: Conceptual development by the author with intensive AI assistance for formalization, coding, testing, documentation, and technical implementation.
-License: Apache License 2.0
-
----
-
-Overview
-
-Piotesseron is an experimental cognitive architecture centered on structural legitimacy, uncertainty management, coherence, and the possibility of non-action.
-
-Its central principle is:
-
-«Piotesseron does not activate merely because activation is possible. It activates when there is sufficient structural legitimacy.»
-
-Piotesseron was conceived not as a system forced to produce an answer at all times, but as an architecture capable of distinguishing between activation, rejection, legitimate uncertainty, and protective silence.
-
-It is an evolving experimental architecture and should not be interpreted as a scientifically validated general artificial intelligence system.
+**Version:** v0.1.0 — Consolidated Master Core Reference Implementation  
+**Conceptual author:** Adrián Eduardo Pineda Moreno  
+**Development:** Conceptual development by the author with intensive AI assistance for formalization, programming, testing, documentation, and technical implementation.  
+**License:** Apache License 2.0  
+**Status:** Experimental reference architecture
 
 ---
 
-Structural Governance
+## About this project
 
-Piotesseron governs the operational architecture through Alcyone.
+Piotesseron is an experimental criterion-based cognitive architecture conceived and developed by Adrián Eduardo Pineda Moreno.
 
-Alcyone
+The project did not originate from a conventional background in computer science, machine learning, or data science. Its development began instead from a conceptual question:
 
-Alcyone is the only active Major Hypercube.
+> **Can a decision architecture be designed to preserve coherence before speed, forced closure, or the appearance of certainty?**
 
-It performs global integration and retains final structural authority.
+From that question, Piotesseron gradually evolved into a structured architecture with its own internal hierarchy, states, entities, limits, structural substrate, decision mechanisms, trajectories, re-entry processes, and external compatibility layers.
 
-The hierarchy is:
+The project has been developed through a long iterative process of conceptual construction, testing, correction, reformulation, and technical implementation.
 
-Piotesseron governs → Alcyone integrates → minor hypercubes specialize → nuclear entities evaluate → Sophiana limits → Council of 12 contrasts → external signals re-enter → Alcyone determines state and master closure.
+Artificial intelligence tools have played an important role in translating abstract ideas into formal descriptions, mathematical relationships, executable Python structures, documentation, testing procedures, and experimental implementations.
 
-Minor hypercubes are subordinate and may specialize local readings, but they do not replace Alcyone.
+The distinction is explicit:
 
----
+**The conceptual architecture and its structural relationships are authored by Adrián Eduardo Pineda Moreno.**
 
-Structural Substrate
+**AI systems have been used extensively as technical instruments for formalization, implementation, debugging, testing, comparison, and documentation.**
 
-π
+This repository does not claim that Piotesseron is a scientifically validated artificial general intelligence system, nor that it has demonstrated superiority over established machine-learning or decision-making architectures.
 
-Piotesseron uses π as a conceptual structural substrate.
+It presents something more specific:
 
-π is not treated as truth, knowledge, or an answer.
-
-Its role is architectural: to represent continuity, non-closure, transit, and the possibility of reorganizing information without prematurely fixing it.
-
-A3
-
-The integer 3 acts as the primary and invariant structural anchor:
-
-A3 = 3
-
-A3 represents structural origin and orientation inside the architecture.
-
-Secondary anchors may extend relationships, but they do not replace A3.
+> **A public, executable reference implementation of an unconventional cognitive architecture that can be examined, tested, criticized, modified, benchmarked, and independently evaluated.**
 
 ---
 
-Four Internal States
+## Central Principle
 
-Piotesseron preserves four legitimate internal states:
+Piotesseron does not activate merely because activation is possible.
 
-"1"
+It activates when there is sufficient structural legitimacy.
+
+This distinction is fundamental.
+
+A system capable of producing an answer is not necessarily justified in producing one.
+
+A possible action is not necessarily a legitimate action.
+
+A high-confidence output is not necessarily a coherent output.
+
+For this reason, Piotesseron explicitly preserves the possibility of:
+
+- activation;
+- rejection;
+- legitimate uncertainty;
+- suspension;
+- containment;
+- non-action;
+- re-entry;
+- structural silence.
+
+Its preferred failure mode is not false certainty.
+
+Its preferred failure mode is **Silence**.
+
+---
+
+## What Piotesseron is
+
+Piotesseron is conceived as a **cognitive architecture of criterion**.
+
+It is not designed primarily as:
+
+- a conventional pretrained model;
+- a classical neural network;
+- a black-box predictor;
+- an architecture forced to answer every input;
+- a system in which accumulated data automatically becomes truth;
+- a collection of autonomous modules competing for final authority.
+
+Instead, it is organized around:
+
+- structural legitimacy;
+- coherence;
+- uncertainty management;
+- distributed reading;
+- multimodal integration;
+- structural crossing;
+- containment;
+- reversible trajectories;
+- non-fixation;
+- action thresholds;
+- the possibility of legitimate non-action.
+
+---
+
+## Governance
+
+Piotesseron governs the complete architecture through **Alcyone**.
+
+### Alcyone
+
+Alcyone is the **only active Major Hypercube**.
+
+It is the point of global structural integration.
+
+No nuclear entity, minor hypercube, modality, external model, external agent, structural line, internal scientist, task, or metatask possesses equivalent authority.
+
+The structural hierarchy is:
+
+**Piotesseron governs → Alcyone integrates → minor hypercubes specialize → nuclear entities evaluate → Sophiana limits → the Council of 12 contrasts → modalities inform → external agents provide signals → Alcyone determines the state and master closure.**
+
+Minor hypercubes may specialize local readings, but they remain subordinate to Alcyone.
+
+---
+
+## Structural Substrate
+
+### π
+
+Piotesseron uses **π as a conceptual structural substrate**.
+
+π is not treated as truth.
+
+π is not knowledge.
+
+π does not determine the answer.
+
+Its function is architectural.
+
+It provides a symbolic substrate for:
+
+- position;
+- continuity;
+- transit;
+- reorganization;
+- structural trace;
+- non-periodicity;
+- resistance to premature fixation.
+
+### A3
+
+The integer part of π, **3**, acts as the primary invariant anchor:
+
+**A3 = 3**
+
+A3 cannot be replaced by secondary anchors.
+
+Secondary anchors may extend relationships, create crossings, reinforce structural compatibility, and preserve trajectories, but the primary origin remains A3.
+
+---
+
+## Four Internal States
+
+Piotesseron preserves four legitimate internal states.
+
+### `1`
 
 Sufficient structural activation.
 
-"0"
+### `0`
 
 Structural rejection.
 
-"Tal_Vez / MAYBE"
+### `MAYBE / Tal_Vez`
 
 Legitimate indetermination.
 
-The structure remains open because sufficient grounds for closure do not yet exist.
+The architecture does not yet possess sufficient grounds for closure, but the configuration remains structurally open.
 
-"Silencio / SILENCE"
+### `SILENCE / Silencio`
 
 Protective non-intervention.
 
-Silence is used when acting would produce false closure, excessive risk, incoherence, or structurally unjustified action.
+Silence appears when acting, answering, or executing could create false closure, excessive risk, incoherence, or structurally unjustified action.
 
-Piotesseron's preferred failure mode is Silence rather than false certainty.
+These four states belong to the internal architecture itself.
 
----
-
-Nuclear Entities
-
-Mentea
-
-Evaluates logic, coherence, consistency, and contradiction.
-
-Creaon
-
-Opens alternative configurations and controlled possibilities without forcing closure.
-
-Amalthea
-
-Seeks balance, proportion, and integrability between structural lines.
-
-Sophiana
-
-Introduces limits, containment, irreversibility awareness, and protection against false closure.
-
-Sophiana belongs fully to Alcyone but does not possess a minor hypercube.
-
-Daughter of Sophiana
-
-Monitors the threshold between Tal_Vez and Silencio, helping distinguish productive uncertainty from uncertainty that should be contained.
+They are not merely labels attached after a binary decision.
 
 ---
 
-Council of 12
+## Binary Compatibility
 
-Piotesseron includes a transversal symbolic Council of 12 internal scientific perspectives:
+Many external systems operate only with binary outputs.
+
+For this reason, Piotesseron contains an optional external compatibility layer.
+
+The internal structure remains:
+
+`1 / 0 / MAYBE / SILENCE`
+
+A binary interface may project these states as:
+
+- `1 → 1`
+- `0 → 0`
+- `MAYBE → threshold or policy-dependent decision`
+- `SILENCE → 0 / blocked action / abstention / no-action`
+
+The binary projection belongs to the interface.
+
+It does not eliminate the four-state architecture.
+
+---
+
+## Nuclear Entities
+
+### Mentea
+
+Mentea sustains logical coherence, consistency, compatibility, and contradiction detection.
+
+Its fundamental question is:
+
+> **Does this structure hold together internally?**
+
+### Creaon
+
+Creaon opens alternative configurations without forcing closure.
+
+Its fundamental question is:
+
+> **What other possibilities can exist without betraying coherence?**
+
+### Amalthea
+
+Amalthea seeks balance and integrability between structural lines.
+
+Its fundamental question is:
+
+> **Can the whole remain balanced without suppressing legitimate parts?**
+
+### Sophiana
+
+Sophiana introduces the internal limit.
+
+It evaluates risk, irreversibility, impropriety, contradiction, and the possibility that further action would damage coherence.
+
+Sophiana belongs fully to Alcyone.
+
+However:
+
+**Sophiana does not possess a minor hypercube.**
+
+This is a structural invariant of Piotesseron.
+
+### Daughter of Sophiana
+
+The Daughter of Sophiana monitors the threshold between `MAYBE` and `SILENCE`.
+
+Its role is to distinguish between uncertainty that remains productive and uncertainty that should be contained.
+
+---
+
+## Council of 12
+
+Piotesseron includes a transversal Council of 12 symbolic scientific perspectives:
 
 - Euclid
 - Hypatia
@@ -135,163 +274,263 @@ Piotesseron includes a transversal symbolic Council of 12 internal scientific pe
 - Tesla
 - Feynman
 
-The Council provides contrast and multiple perspectives.
+The Council provides structural contrast.
 
-It does not govern the system and does not replace Alcyone.
+It does not govern the architecture.
 
----
+It does not replace the nuclear entities.
 
-UEE — Evaluated Structural Unit
+It does not determine the master closure independently.
 
-Inputs enter Piotesseron as UEEs — Evaluated Structural Units.
-
-A UEE may represent:
-
-- text
-- numerical data
-- images
-- sound
-- video
-- documents
-- hypotheses
-- external signals
-- datasets
-- decisions
-- multimodal configurations
-
-The UEE is distributed across structural lines and evaluated before activation.
+Final integration remains within Alcyone.
 
 ---
 
-Multimodality
+## UEE — Evaluated Structural Unit
 
-Piotesseron can conceptually integrate multiple modalities.
+Information enters Piotesseron as a **UEE — Evaluated Structural Unit**.
 
-Its principle is:
+A UEE may contain:
 
-«More data does not automatically mean more truth.»
+- text;
+- numerical data;
+- images;
+- audio;
+- video;
+- documents;
+- metadata;
+- sensor information;
+- hypotheses;
+- external model outputs;
+- decisions;
+- complex multimodal configurations.
 
-Signals are evaluated according to coherence, reliability, completeness, contradiction, context, risk, and structural relevance.
+A UEE does not enter as established truth.
 
-External systems may provide information, but they do not decide for Piotesseron.
+It enters as a configuration proposed for structural evaluation.
 
 ---
 
-Master Closure
+## Multimodality
 
-Global integration inside Alcyone may produce four master closures:
+Piotesseron follows a simple principle:
 
-ACTIVATE
+> **More data does not automatically mean more truth.**
+
+Different modalities may confirm, contradict, reinforce, weaken, contextualize, or limit one another.
+
+The architecture therefore evaluates information according to structural relationships rather than simple accumulation.
+
+---
+
+## Structural Crossing
+
+Piotesseron does not simply average every reading.
+
+It performs what the architecture calls **structural crossing**.
+
+Structural crossing examines relationships between:
+
+- coherence;
+- reliability;
+- completeness;
+- contradiction;
+- risk;
+- novelty;
+- actionability;
+- irreversibility;
+- noise;
+- entity readings;
+- Council readings;
+- modalities;
+- anchors;
+- previous trajectories.
+
+A configuration that appears strong in one isolated line is not automatically accepted.
+
+It must remain sustainable across the wider structure.
+
+---
+
+## Master Closures
+
+Global integration may produce four master closures:
+
+### `ACTIVATE`
 
 Sufficient structural legitimacy and action threshold exist.
 
-SUSPEND
+### `SUSPEND`
 
-The configuration remains partially legitimate but unresolved.
+The structure remains unresolved but potentially viable.
 
-CONTAIN
+### `CONTAIN`
 
-Action could damage coherence or strong Silence is present.
+Acting could damage coherence or strong `SILENCE` is present.
 
-DISCARD
+### `DISCARD`
 
 The configuration cannot sustain itself structurally.
 
 ---
 
-Structural Trajectory
+## Re-entry and Non-Fixation
 
-Piotesseron preserves the trajectory of an evaluated configuration:
+Piotesseron does not treat every previous decision as permanently fixed.
 
-Input → distributed reading → structural crossing → global integration → state → task → action/non-action → master closure → trajectory → possible re-entry
+A previous trajectory may be reopened when new evidence appears.
 
-Memory is conceived as a revisable trajectory rather than an irreversible accumulation of fixed conclusions.
+This reflects one of the architecture's central principles:
 
----
+**Memory should preserve trajectory without petrifying conclusion.**
 
-External Binary Projection
+The system therefore supports:
 
-Some machine-learning benchmarks require binary outputs.
-
-Piotesseron therefore distinguishes between its real four-state internal architecture and an external binary projection.
-
-Typical projection:
-
-- "1 → 1"
-- "0 → 0"
-- "Tal_Vez → threshold/policy-dependent decision"
-- "Silencio → 0 / abstention / blocked action"
-
-The external projection does not eliminate the internal four-state structure.
+- previous structural traces;
+- new evidence;
+- re-evaluation;
+- contextual reorganization;
+- possible state transition;
+- possible new closure.
 
 ---
 
-Experimental Status
+## External Models and Agents
 
-Piotesseron is an experimental criterion-based architecture.
+Piotesseron may receive signals from external systems such as:
 
-Implementations and applications have been explored in areas including decision systems, chess, simulations, forecasting, structured analysis, and other experimental domains.
+- machine-learning models;
+- databases;
+- APIs;
+- sensors;
+- documents;
+- computational tools;
+- other decision systems.
 
-These implementations demonstrate that elements of the architecture can be translated into executable systems.
+However, external systems do not obtain final authority.
 
-They do not, by themselves, establish scientific superiority over conventional machine-learning or decision-making approaches.
+The principle remains:
 
-Piotesseron remains open to testing, benchmarking, criticism, ablation studies, modification, and independent evaluation.
-
----
-
-Project Philosophy
-
-Piotesseron does not seek certainty where certainty is structurally unjustified.
-
-It distinguishes between:
-
-- knowing
-- estimating
-- doubting
-- suspending
-- rejecting
-- containing
-- acting
-- not acting
-
-Its guiding principle is:
-
-«Coherence before premature closure.»
-
-And when action would betray coherence:
-
-«Silence is not failure. It is protection of coherence.»
+> **External agents provide signals. Alcyone retains criterion.**
 
 ---
 
-Authorship and AI Assistance
+## Experimental Status
 
-Piotesseron was conceptually imagined and developed by Adrián Eduardo Pineda Moreno.
+Piotesseron is currently an **experimental architecture and reference implementation**.
 
-Artificial intelligence tools have been used extensively as instruments for:
+The repository demonstrates that its central concepts can be translated into executable structures.
 
-- technical formalization
-- programming assistance
-- documentation
-- testing
-- debugging
-- simulation
-- conceptual contrast
-- translation between abstract ideas and executable implementations
+That does not establish that the architecture is scientifically superior to existing approaches.
 
-The conceptual authorship of Piotesseron and the technical assistance used to materialize it are therefore explicitly distinguished.
+Questions that remain open include:
+
+- empirical performance;
+- calibration;
+- robustness;
+- ablation of individual components;
+- comparative benchmarks;
+- causal contribution of π;
+- usefulness of A3;
+- contribution of the Council of 12;
+- behavior of MAYBE and SILENCE under real datasets;
+- scalability;
+- generalization across domains.
+
+These are not hidden limitations.
+
+They are part of the research problem.
 
 ---
 
-License
+## Why publish Piotesseron?
 
-This repository is licensed under the Apache License 2.0.
+The purpose of publishing this repository is not to present Piotesseron as finished or unquestionable.
 
-See the "LICENSE" file for the complete license text.
+It is to make the architecture inspectable.
+
+A conceptual system that remains private cannot easily be tested, criticized, reproduced, improved, rejected, or validated by others.
+
+Publication allows the project to move from private construction toward public examination.
+
+The repository therefore exists so that Piotesseron can be:
+
+- read;
+- executed;
+- criticized;
+- forked;
+- tested;
+- benchmarked;
+- modified;
+- challenged;
+- extended;
+- independently evaluated.
+
+A negative result is also a result.
+
+If a structural component does not improve performance, that should be discoverable.
+
+If a component does contribute something measurable, that should also be discoverable.
 
 ---
 
-Piotesseron was not conceived to answer at all times.
+## Development Background
 
-It was conceived so that coherence would not be betrayed.
+Piotesseron was developed outside a conventional academic or professional data-science pathway.
+
+The project emerged through persistent conceptual exploration and iterative experimentation rather than through a traditional sequence of formal training followed by implementation.
+
+This has advantages and disadvantages.
+
+It allows the architecture to question assumptions that might otherwise be taken for granted.
+
+At the same time, it makes empirical testing, external criticism, reproducibility, and technical scrutiny especially important.
+
+For that reason, this repository explicitly separates:
+
+**conceptual authorship**
+
+from
+
+**technical implementation assistance**
+
+and
+
+**scientific validation**.
+
+These are three different things.
+
+---
+
+## Authorship and AI Assistance
+
+**Conceptual author:** Adrián Eduardo Pineda Moreno
+
+Piotesseron's architecture, hierarchy, conceptual entities, internal states, structural relationships, and governing principles were developed by the conceptual author.
+
+Artificial intelligence tools have been used intensively to assist with:
+
+- formalization;
+- Python implementation;
+- debugging;
+- restructuring;
+- documentation;
+- mathematical translation;
+- simulation;
+- testing;
+- technical comparison;
+- code review;
+- experimental design.
+
+This assistance is explicitly acknowledged rather than hidden.
+
+---
+
+## Repository Structure
+
+```text
+Piotesseron-Core/
+│
+├── README.md
+├── LICENSE
+└── piotesseron_core.py
