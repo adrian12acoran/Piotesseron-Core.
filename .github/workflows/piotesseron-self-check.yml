@@ -1,0 +1,75 @@
+name: Piotesseron Structural Self-Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "piotesseron_core.py"
+      - ".github/workflows/piotesseron-self-check.yml"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "piotesseron_core.py"
+      - ".github/workflows/piotesseron-self-check.yml"
+
+  workflow_dispatch:
+
+jobs:
+  structural-self-check:
+    name: Verify Piotesseron Core Invariants
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile piotesseron_core.py
+
+      - name: Run Piotesseron structural self-check
+        run: |
+          python - <<'PY'
+          import piotesseron_core as piotesseron
+
+          checks = piotesseron.structural_self_check()
+
+          print("=" * 72)
+          print("PIOTESSERON — STRUCTURAL SELF-CHECK")
+          print("=" * 72)
+
+          failed = []
+
+          for name, result in checks.items():
+              status = "OK" if result else "FAIL"
+              print(f"{name:45s} {status}")
+
+              if not result:
+                  failed.append(name)
+
+          print("=" * 72)
+
+          if failed:
+              print("STRUCTURAL INVARIANT FAILURE")
+              print("Failed checks:")
+              for name in failed:
+                  print(f" - {name}")
+
+              raise SystemExit(1)
+
+          print("ALL PIOTESSERON STRUCTURAL INVARIANTS: OK")
+          PY
